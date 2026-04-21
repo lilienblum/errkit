@@ -3,7 +3,7 @@
 Tiny CLI that owns a generated TypeScript error catalog.
 
 ```bash
-errkit add USER_NOT_AUTHORIZED --description "User not authorized"
+npx errkit add USER_NOT_AUTHORIZED --description "User not authorized"
 ```
 
 Produces / updates `errors.ts`:
