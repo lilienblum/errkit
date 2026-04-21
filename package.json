@@ -1,13 +1,14 @@
 {
   "name": "errkit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "license": "MIT",
   "bin": {
     "errkit": "dist/cli.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "schema.json"
   ],
   "scripts": {
     "build": "bun build src/cli.ts --outfile dist/cli.js --target node",
@@ -17,5 +18,8 @@
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^5"
+  },
+  "dependencies": {
+    "jsonc-parser": "^3.3.1"
   }
 }
