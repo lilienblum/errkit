@@ -39,14 +39,14 @@ const STARTER = `// errkit configuration.
 
   // Errors included in every output. \`description\` is optional.
   "common": {
-    // "USER_NOT_AUTHORIZED": { "description": "User is not authorized" },
-    // "PAYMENT_FAILED": {}
+    // "user_not_authorized": { "description": "User is not authorized" },
+    // "payment_failed": {}
   },
 
   // Named groups of errors. Outputs opt in by listing a scope name.
   "scopes": {
     // "server": {
-    //   "DATABASE_UNAVAILABLE": { "description": "Database is unavailable" }
+    //   "database_unavailable": { "description": "Database is unavailable" }
     // }
   }
 }

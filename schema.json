@@ -13,7 +13,7 @@
     "common": {
       "type": "object",
       "description": "Errors included in every output.",
-      "propertyNames": { "pattern": "^[A-Z][A-Z0-9_]*$" },
+      "propertyNames": { "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$" },
       "additionalProperties": { "$ref": "#/definitions/entry" }
     },
     "scopes": {
@@ -21,7 +21,7 @@
       "description": "Named groups of errors. Outputs opt in by listing a scope name.",
       "additionalProperties": {
         "type": "object",
-        "propertyNames": { "pattern": "^[A-Z][A-Z0-9_]*$" },
+        "propertyNames": { "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$" },
         "additionalProperties": { "$ref": "#/definitions/entry" }
       }
     }

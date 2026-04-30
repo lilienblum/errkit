@@ -21,12 +21,12 @@ npx errkit generate   # backfills codes, writes every output file
   ],
 
   "common": {
-    "USER_NOT_AUTHORIZED": { "description": "User is not authorized" }
+    "user_not_authorized": { "description": "User is not authorized" }
   },
 
   "scopes": {
     "server": {
-      "DATABASE_UNAVAILABLE": { "description": "Database is unavailable" }
+      "database_unavailable": { "description": "Database is unavailable" }
     }
   }
 }
@@ -37,6 +37,7 @@ Entries don't need a `code` — `errkit generate` fills in any missing ones and 
 ## How it works
 
 - Language is inferred from the file extension (`.ts`, `.go`, or `.rs`).
+- Error names in `errkit.jsonc` use lowercase snake case, then generate PascalCase API names.
 - Each output emits `common` entries plus any scopes it lists, flattened and sorted by name.
 - A scoped entry with the same name as a common entry overrides it, with a warning.
 - Codes are 6 characters from a human-safe alphabet (no `I`, `L`, `O`, `0`, `1`).

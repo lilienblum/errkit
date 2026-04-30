@@ -21,16 +21,19 @@ import {
 } from "./lib.ts";
 
 describe("isValidName", () => {
-	test("accepts uppercase snake case", () => {
-		expect(isValidName("USER_NOT_AUTHORIZED")).toBe(true);
-		expect(isValidName("HTTP_404")).toBe(true);
+	test("accepts lowercase snake case", () => {
+		expect(isValidName("user_not_authorized")).toBe(true);
+		expect(isValidName("http_404")).toBe(true);
+		expect(isValidName("http404")).toBe(true);
 	});
 
-	test("rejects lowercase, camel, leading digit, hyphen, empty", () => {
-		expect(isValidName("user")).toBe(false);
+	test("rejects uppercase, camel, leading digit, repeated separators, hyphen, empty", () => {
+		expect(isValidName("USER_NOT_AUTHORIZED")).toBe(false);
 		expect(isValidName("UserNotAuthorized")).toBe(false);
-		expect(isValidName("404_ERROR")).toBe(false);
-		expect(isValidName("FOO-BAR")).toBe(false);
+		expect(isValidName("404_error")).toBe(false);
+		expect(isValidName("foo__bar")).toBe(false);
+		expect(isValidName("foo_")).toBe(false);
+		expect(isValidName("foo-bar")).toBe(false);
 		expect(isValidName("")).toBe(false);
 	});
 });
@@ -82,13 +85,13 @@ describe("langFromPath", () => {
 describe("parseConfig", () => {
 	test("parses a populated config", () => {
 		const content = `{
-			"common": { "FOO": { "code": "ABCDEF", "description": "foo" } },
-			"scopes": { "server": { "BAR": {} } },
+			"common": { "foo": { "code": "ABCDEF", "description": "foo" } },
+			"scopes": { "server": { "bar": {} } },
 			"outputs": [{ "path": "errors.ts" }, { "path": "errs.go", "scopes": ["server"] }]
 		}`;
 		const cfg = parseConfig(content);
-		expect(cfg.common?.FOO?.code).toBe("ABCDEF");
-		expect(cfg.scopes?.server?.BAR).toEqual({});
+		expect(cfg.common?.foo?.code).toBe("ABCDEF");
+		expect(cfg.scopes?.server?.bar).toEqual({});
 		expect(cfg.outputs).toHaveLength(2);
 	});
 
@@ -96,20 +99,20 @@ describe("parseConfig", () => {
 		const content = `{
 			// leading comment
 			"common": {
-				"FOO": { "description": "hi", },
+				"foo": { "description": "hi", },
 			},
 		}`;
 		const cfg = parseConfig(content);
-		expect(cfg.common?.FOO?.description).toBe("hi");
+		expect(cfg.common?.foo?.description).toBe("hi");
 	});
 
 	test("rejects invalid entry name", () => {
-		const content = `{ "common": { "lowercase": {} } }`;
+		const content = `{ "common": { "UPPERCASE": {} } }`;
 		expect(() => parseConfig(content)).toThrow(/match/);
 	});
 
 	test("rejects invalid code", () => {
-		const content = `{ "common": { "FOO": { "code": "badcod" } } }`;
+		const content = `{ "common": { "foo": { "code": "badcod" } } }`;
 		expect(() => parseConfig(content)).toThrow(/code/);
 	});
 
@@ -126,13 +129,13 @@ describe("parseConfig", () => {
 describe("findMissingCodes", () => {
 	test("finds entries missing a code in common and scopes", () => {
 		const cfg = parseConfig(`{
-			"common": { "A": {}, "B": { "code": "ABCDEF" } },
-			"scopes": { "s": { "C": {} } }
+			"common": { "a": {}, "b": { "code": "ABCDEF" } },
+			"scopes": { "s": { "c": {} } }
 		}`);
 		const missing = findMissingCodes(cfg);
 		expect(missing.map((m) => m.path)).toEqual([
-			["common", "A", "code"],
-			["scopes", "s", "C", "code"],
+			["common", "a", "code"],
+			["scopes", "s", "c", "code"],
 		]);
 	});
 });
@@ -142,8 +145,8 @@ describe("backfillCodes", () => {
 		const input = `{
   // keep me
   "common": {
-    "FOO": { "description": "needs a code" },
-    "BAR": { "code": "ABCDEF" }
+    "foo": { "description": "needs a code" },
+    "bar": { "code": "ABCDEF" }
   }
 }
 `;
@@ -153,12 +156,12 @@ describe("backfillCodes", () => {
 		expect(content).toContain("// keep me");
 		expect(content).toContain(`"code": "ABCDEF"`);
 		const after = parseConfig(content);
-		expect(after.common?.FOO?.code).toMatch(/^[A-Z2-9]{6}$/);
-		expect(after.common?.BAR?.code).toBe("ABCDEF");
+		expect(after.common?.foo?.code).toMatch(/^[A-Z2-9]{6}$/);
+		expect(after.common?.bar?.code).toBe("ABCDEF");
 	});
 
 	test("no-ops when everything has a code", () => {
-		const input = `{ "common": { "FOO": { "code": "ABCDEF" } } }`;
+		const input = `{ "common": { "foo": { "code": "ABCDEF" } } }`;
 		const { content, added } = backfillCodes(input, parseConfig(input));
 		expect(added).toBe(0);
 		expect(content).toBe(input);
@@ -168,27 +171,27 @@ describe("backfillCodes", () => {
 describe("collectEntries", () => {
 	test("merges common with listed scopes, sorted by name", () => {
 		const cfg = parseConfig(`{
-			"common": { "Z_LAST": { "code": "ABCDEF", "description": "z" } },
+			"common": { "z_last": { "code": "ABCDEF", "description": "z" } },
 			"scopes": {
-				"server": { "A_FIRST": { "code": "GHJKMN" } },
-				"client": { "NEVER": { "code": "PQRSTU" } }
+				"server": { "a_first": { "code": "GHJKMN" } },
+				"client": { "never": { "code": "PQRSTU" } }
 			}
 		}`);
 		const { entries, warnings } = collectEntries(cfg, { path: "x.ts", scopes: ["server"] });
 		expect(entries).toEqual([
-			{ name: "A_FIRST", code: "GHJKMN" },
-			{ name: "Z_LAST", code: "ABCDEF", description: "z" },
+			{ name: "a_first", code: "GHJKMN" },
+			{ name: "z_last", code: "ABCDEF", description: "z" },
 		]);
 		expect(warnings).toEqual([]);
 	});
 
 	test("scope entry overrides common with same name, emits warning", () => {
 		const cfg = parseConfig(`{
-			"common": { "FOO": { "code": "ABCDEF", "description": "common" } },
-			"scopes": { "server": { "FOO": { "code": "GHJKMN", "description": "server" } } }
+			"common": { "foo": { "code": "ABCDEF", "description": "common" } },
+			"scopes": { "server": { "foo": { "code": "GHJKMN", "description": "server" } } }
 		}`);
 		const { entries, warnings } = collectEntries(cfg, { path: "x.ts", scopes: ["server"] });
-		expect(entries).toEqual([{ name: "FOO", code: "GHJKMN", description: "server" }]);
+		expect(entries).toEqual([{ name: "foo", code: "GHJKMN", description: "server" }]);
 		expect(warnings).toHaveLength(1);
 		expect(warnings[0]).toMatch(/overrides/);
 	});
@@ -199,7 +202,7 @@ describe("collectEntries", () => {
 	});
 
 	test("errors if an entry has no code (must call generate first)", () => {
-		const cfg = parseConfig(`{ "common": { "FOO": {} } }`);
+		const cfg = parseConfig(`{ "common": { "foo": {} } }`);
 		expect(() => collectEntries(cfg, { path: "x.ts" })).toThrow(/missing a code/);
 	});
 });
@@ -207,14 +210,14 @@ describe("collectEntries", () => {
 describe("renderTs", () => {
 	test("renders enum with PascalCase members and JSDoc", () => {
 		const entries: Entry[] = [
-			{ name: "A", code: "AAAAAA" },
-			{ name: "USER_NOT_AUTHORIZED", code: "BBBBBB", description: "bee" },
+			{ name: "a", code: "AAAAAA" },
+			{ name: "user_not_authorized", code: "BBBBBB", description: "bee" },
 		];
 		const out = renderTs(entries);
 		expect(out).toContain(TS_MARKER);
 		expect(out).toContain(`A = "AAAAAA",`);
 		expect(out).toContain(`UserNotAuthorized = "BBBBBB",`);
-		expect(out).not.toContain("USER_NOT_AUTHORIZED");
+		expect(out).not.toContain("user_not_authorized");
 		expect(out).toContain("/** bee */");
 		expect(hasMarker(out, TS_MARKER)).toBe(true);
 	});
@@ -222,18 +225,18 @@ describe("renderTs", () => {
 	test("rejects entries that generate the same TypeScript enum member", () => {
 		expect(() =>
 			renderTs([
-				{ name: "FOO_BAR", code: "AAAAAA" },
-				{ name: "FOO__BAR", code: "BBBBBB" },
+				{ name: "http404", code: "AAAAAA" },
+				{ name: "http_404", code: "BBBBBB" },
 			]),
-		).toThrow(/both generate TypeScript enum member FooBar/);
+		).toThrow(/both generate TypeScript enum member Http404/);
 	});
 });
 
 describe("renderGo", () => {
 	test("renders const block with package name and PascalCase constants", () => {
 		const entries: Entry[] = [
-			{ name: "A", code: "AAAAAA" },
-			{ name: "USER_NOT_AUTHORIZED", code: "BBBBBB", description: "bee" },
+			{ name: "a", code: "AAAAAA" },
+			{ name: "user_not_authorized", code: "BBBBBB", description: "bee" },
 		];
 		const out = renderGo(entries, "errs");
 		expect(out).toContain(GO_MARKER);
@@ -241,7 +244,7 @@ describe("renderGo", () => {
 		expect(out).toContain("type Err string");
 		expect(out).toContain(`A Err = "AAAAAA"`);
 		expect(out).toContain(`UserNotAuthorized Err = "BBBBBB"`);
-		expect(out).not.toContain("USER_NOT_AUTHORIZED");
+		expect(out).not.toContain("user_not_authorized");
 		expect(out).toContain("// bee");
 		expect(hasMarker(out, GO_MARKER)).toBe(true);
 	});
@@ -255,25 +258,25 @@ describe("renderGo", () => {
 	test("rejects entries that generate the same Go constant", () => {
 		expect(() =>
 			renderGo([
-				{ name: "FOO_BAR", code: "AAAAAA" },
-				{ name: "FOO__BAR", code: "BBBBBB" },
+				{ name: "http404", code: "AAAAAA" },
+				{ name: "http_404", code: "BBBBBB" },
 			], "errs"),
-		).toThrow(/both generate Go constant FooBar/);
+		).toThrow(/both generate Go constant Http404/);
 	});
 });
 
 describe("renderRust", () => {
 	test("renders enum variants, docs, and conversions", () => {
 		const entries: Entry[] = [
-			{ name: "A", code: "AAAAAA" },
-			{ name: "HTTP_404", code: "BBBBBB", description: "bee" },
+			{ name: "a", code: "AAAAAA" },
+			{ name: "http_404", code: "BBBBBB", description: "bee" },
 		];
 		const out = renderRust(entries);
 		expect(out).toContain(RUST_MARKER);
 		expect(out).toContain("pub enum Err {");
 		expect(out).toContain("A,");
 		expect(out).toContain("Http404,");
-		expect(out).not.toContain("HTTP_404");
+		expect(out).not.toContain("http_404");
 		expect(out).toContain("/// bee");
 		expect(out).toContain("pub const ALL: &'static [Self]");
 		expect(out).toContain("pub const fn as_str(self) -> &'static str");
@@ -295,14 +298,14 @@ describe("renderRust", () => {
 	test("rejects entries that generate the same rust variant", () => {
 		expect(() =>
 			renderRust([
-				{ name: "FOO_BAR", code: "AAAAAA" },
-				{ name: "FOO__BAR", code: "BBBBBB" },
+				{ name: "http404", code: "AAAAAA" },
+				{ name: "http_404", code: "BBBBBB" },
 			]),
-		).toThrow(/both generate Rust variant FooBar/);
+		).toThrow(/both generate Rust variant Http404/);
 	});
 
 	test("rejects entries that generate reserved rust variants", () => {
-		expect(() => renderRust([{ name: "SELF", code: "AAAAAA" }])).toThrow(
+		expect(() => renderRust([{ name: "self", code: "AAAAAA" }])).toThrow(
 			/reserved Rust variant name Self/,
 		);
 	});
