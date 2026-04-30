@@ -9,10 +9,12 @@ import {
 	findMissingCodes,
 	renderTs,
 	renderGo,
+	renderRust,
 	langFromPath,
 	hasMarker,
 	TS_MARKER,
 	GO_MARKER,
+	RUST_MARKER,
 	ALPHABET,
 	CODE_LENGTH,
 	type Entry,
@@ -65,9 +67,10 @@ describe("generateCode", () => {
 });
 
 describe("langFromPath", () => {
-	test("infers ts and go", () => {
+	test("infers ts, go, and rust", () => {
 		expect(langFromPath("src/errors.ts")).toBe("ts");
 		expect(langFromPath("internal/errs/errors.go")).toBe("go");
+		expect(langFromPath("src/errors.rs")).toBe("rs");
 	});
 
 	test("throws on unknown extension", () => {
@@ -110,9 +113,9 @@ describe("parseConfig", () => {
 		expect(() => parseConfig(content)).toThrow(/code/);
 	});
 
-	test("rejects path without .ts or .go", () => {
+	test("rejects path without .ts, .go, or .rs", () => {
 		const content = `{ "outputs": [{ "path": "errors.py" }] }`;
-		expect(() => parseConfig(content)).toThrow(/\.ts or \.go/);
+		expect(() => parseConfig(content)).toThrow(/\.ts, \.go, or \.rs/);
 	});
 
 	test("allows empty config", () => {
@@ -202,30 +205,43 @@ describe("collectEntries", () => {
 });
 
 describe("renderTs", () => {
-	test("renders enum with JSDoc and sorted entries", () => {
+	test("renders enum with PascalCase members and JSDoc", () => {
 		const entries: Entry[] = [
 			{ name: "A", code: "AAAAAA" },
-			{ name: "B", code: "BBBBBB", description: "bee" },
+			{ name: "USER_NOT_AUTHORIZED", code: "BBBBBB", description: "bee" },
 		];
 		const out = renderTs(entries);
 		expect(out).toContain(TS_MARKER);
 		expect(out).toContain(`A = "AAAAAA",`);
+		expect(out).toContain(`UserNotAuthorized = "BBBBBB",`);
+		expect(out).not.toContain("USER_NOT_AUTHORIZED");
 		expect(out).toContain("/** bee */");
 		expect(hasMarker(out, TS_MARKER)).toBe(true);
+	});
+
+	test("rejects entries that generate the same TypeScript enum member", () => {
+		expect(() =>
+			renderTs([
+				{ name: "FOO_BAR", code: "AAAAAA" },
+				{ name: "FOO__BAR", code: "BBBBBB" },
+			]),
+		).toThrow(/both generate TypeScript enum member FooBar/);
 	});
 });
 
 describe("renderGo", () => {
-	test("renders const block with package name", () => {
+	test("renders const block with package name and PascalCase constants", () => {
 		const entries: Entry[] = [
 			{ name: "A", code: "AAAAAA" },
-			{ name: "B", code: "BBBBBB", description: "bee" },
+			{ name: "USER_NOT_AUTHORIZED", code: "BBBBBB", description: "bee" },
 		];
 		const out = renderGo(entries, "errs");
 		expect(out).toContain(GO_MARKER);
 		expect(out).toContain("package errs");
 		expect(out).toContain("type Err string");
 		expect(out).toContain(`A Err = "AAAAAA"`);
+		expect(out).toContain(`UserNotAuthorized Err = "BBBBBB"`);
+		expect(out).not.toContain("USER_NOT_AUTHORIZED");
 		expect(out).toContain("// bee");
 		expect(hasMarker(out, GO_MARKER)).toBe(true);
 	});
@@ -234,5 +250,60 @@ describe("renderGo", () => {
 		const out = renderGo([], "errs");
 		expect(out).toContain("package errs");
 		expect(out).toContain("const ()");
+	});
+
+	test("rejects entries that generate the same Go constant", () => {
+		expect(() =>
+			renderGo([
+				{ name: "FOO_BAR", code: "AAAAAA" },
+				{ name: "FOO__BAR", code: "BBBBBB" },
+			], "errs"),
+		).toThrow(/both generate Go constant FooBar/);
+	});
+});
+
+describe("renderRust", () => {
+	test("renders enum variants, docs, and conversions", () => {
+		const entries: Entry[] = [
+			{ name: "A", code: "AAAAAA" },
+			{ name: "HTTP_404", code: "BBBBBB", description: "bee" },
+		];
+		const out = renderRust(entries);
+		expect(out).toContain(RUST_MARKER);
+		expect(out).toContain("pub enum Err {");
+		expect(out).toContain("A,");
+		expect(out).toContain("Http404,");
+		expect(out).not.toContain("HTTP_404");
+		expect(out).toContain("/// bee");
+		expect(out).toContain("pub const ALL: &'static [Self]");
+		expect(out).toContain("pub const fn as_str(self) -> &'static str");
+		expect(out).toContain(`Self::Http404 => "BBBBBB",`);
+		expect(out).toContain("pub fn from_code(code: &str) -> Option<Self>");
+		expect(out).toContain("impl fmt::Display for Err");
+		expect(out).toContain("impl std::error::Error for Err {}");
+		expect(hasMarker(out, RUST_MARKER)).toBe(true);
+	});
+
+	test("empty entries still produces valid enum", () => {
+		const out = renderRust([]);
+		expect(out).toContain("pub enum Err {");
+		expect(out).toContain("impl Err {");
+		expect(out).toContain("pub const ALL: &'static [Self] = &[];");
+		expect(out).toContain("as_str");
+	});
+
+	test("rejects entries that generate the same rust variant", () => {
+		expect(() =>
+			renderRust([
+				{ name: "FOO_BAR", code: "AAAAAA" },
+				{ name: "FOO__BAR", code: "BBBBBB" },
+			]),
+		).toThrow(/both generate Rust variant FooBar/);
+	});
+
+	test("rejects entries that generate reserved rust variants", () => {
+		expect(() => renderRust([{ name: "SELF", code: "AAAAAA" }])).toThrow(
+			/reserved Rust variant name Self/,
+		);
 	});
 });

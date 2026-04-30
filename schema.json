@@ -7,7 +7,7 @@
     "$schema": { "type": "string" },
     "outputs": {
       "type": "array",
-      "description": "Files to generate. Each output emits `shared` entries plus any listed scopes.",
+      "description": "Files to generate. Each output emits `common` entries plus any listed scopes.",
       "items": { "$ref": "#/definitions/output" }
     },
     "common": {
@@ -34,8 +34,8 @@
       "properties": {
         "path": {
           "type": "string",
-          "pattern": "\\.(ts|go)$",
-          "description": "Path to the generated file, relative to errkit.jsonc. Language is inferred from the extension (.ts or .go)."
+          "pattern": "\\.(ts|go|rs)$",
+          "description": "Path to the generated file, relative to errkit.jsonc. Language is inferred from the extension (.ts, .go, or .rs)."
         },
         "scopes": {
           "type": "array",

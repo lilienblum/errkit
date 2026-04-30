@@ -8,9 +8,11 @@ import {
 	collectEntries,
 	renderTs,
 	renderGo,
+	renderRust,
 	hasMarker,
 	markerFor,
 	langFromPath,
+	type Lang,
 	type Config,
 	type Output,
 } from "./lib.ts";
@@ -27,11 +29,12 @@ const STARTER = `// errkit configuration.
 {
   "$schema": "${SCHEMA_URL}",
 
-  // Files to generate. Language is inferred from the file extension (.ts or .go).
+  // Files to generate. Language is inferred from the file extension (.ts, .go, or .rs).
   // Each output emits \`common\` entries plus any listed scopes.
   "outputs": [
     // { "path": "src/errors.ts" },
-    // { "path": "internal/errs/errors.go", "scopes": ["server"] }
+    // { "path": "internal/errs/errors.go", "scopes": ["server"] },
+    // { "path": "src/errors.rs", "scopes": ["server"] }
   ],
 
   // Errors included in every output. \`description\` is optional.
@@ -122,7 +125,7 @@ async function writeOutput(
 	configDir: string,
 	output: Output,
 	config: Config,
-): Promise<{ status: "written" | "unchanged"; lang: "ts" | "go"; absPath: string }> {
+): Promise<{ status: "written" | "unchanged"; lang: Lang; absPath: string }> {
 	const lang = langFromPath(output.path);
 	const { entries, warnings } = collectEntries(config, output);
 	for (const w of warnings) {
@@ -130,9 +133,7 @@ async function writeOutput(
 	}
 	const absPath = resolve(configDir, output.path);
 
-	const rendered = lang === "ts"
-		? renderTs(entries)
-		: renderGo(entries, goPackageName(output));
+	const rendered = renderOutput(lang, entries, output);
 
 	if (existsSync(absPath)) {
 		const existing = await readFile(absPath, "utf8");
@@ -152,6 +153,16 @@ async function writeOutput(
 		fail(`Failed to write ${formatPath(absPath)}`);
 	}
 	return { status: "written", lang, absPath };
+}
+
+function renderOutput(
+	lang: Lang,
+	entries: ReturnType<typeof collectEntries>["entries"],
+	output: Output,
+): string {
+	if (lang === "ts") return renderTs(entries);
+	if (lang === "go") return renderGo(entries, goPackageName(output));
+	return renderRust(entries);
 }
 
 async function cmdGenerate(): Promise<void> {
@@ -187,7 +198,13 @@ async function cmdGenerate(): Promise<void> {
 
 	const configDir = dirname(configPath);
 	for (const output of outputs) {
-		const { status, lang, absPath } = await writeOutput(configDir, output, config);
+		let result: Awaited<ReturnType<typeof writeOutput>>;
+		try {
+			result = await writeOutput(configDir, output, config);
+		} catch (err) {
+			fail(`${output.path}: ${(err as Error).message}`);
+		}
+		const { status, lang, absPath } = result;
 		if (status === "written") {
 			process.stdout.write(`Wrote ${formatPath(absPath)} (${lang})\n`);
 		} else {
