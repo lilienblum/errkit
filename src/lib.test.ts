@@ -1,6 +1,8 @@
 import { test, expect, describe } from "bun:test";
 import {
 	isValidName,
+	normalizeName,
+	normalizeEntryNames,
 	isValidCode,
 	generateCode,
 	parseConfig,
@@ -38,6 +40,15 @@ describe("isValidName", () => {
 	});
 });
 
+describe("normalizeName", () => {
+	test("formats names as lowercase snake case", () => {
+		expect(normalizeName("USER_NOT_AUTHORIZED")).toBe("user_not_authorized");
+		expect(normalizeName("UserNotAuthorized")).toBe("user_not_authorized");
+		expect(normalizeName("payment-failed")).toBe("payment_failed");
+		expect(normalizeName(" HTTP 404 ")).toBe("http_404");
+	});
+});
+
 describe("isValidCode", () => {
 	test("accepts 6-char alphabet", () => {
 		expect(isValidCode("ABCDEF")).toBe(true);
@@ -49,6 +60,44 @@ describe("isValidCode", () => {
 		expect(isValidCode("ABCDE1")).toBe(false); // 1 banned
 		expect(isValidCode("ABCDE")).toBe(false);
 		expect(isValidCode("ABCDEFG")).toBe(false);
+	});
+});
+
+describe("normalizeEntryNames", () => {
+	test("lowercases entry names in common and scopes while preserving comments", () => {
+		const input = `{
+  "common": {
+    // keep me
+    "UserNotAuthorized": { "description": "x" }
+  },
+  "scopes": {
+    "server": {
+      "DATABASE_UNAVAILABLE": { "code": "ABCDEF" }
+    }
+  }
+}
+`;
+		const { content, changed } = normalizeEntryNames(input);
+		expect(changed).toBe(2);
+		expect(content).toContain("// keep me");
+		expect(content).toContain(`"user_not_authorized"`);
+		expect(content).toContain(`"database_unavailable"`);
+		expect(content).not.toContain("UserNotAuthorized");
+		expect(content).not.toContain("DATABASE_UNAVAILABLE");
+		expect(parseConfig(content).common?.user_not_authorized?.description).toBe("x");
+		expect(parseConfig(content).scopes?.server?.database_unavailable?.code).toBe("ABCDEF");
+	});
+
+	test("rejects entry name normalization collisions", () => {
+		const input = `{ "common": { "FOO": {}, "foo": {} } }`;
+		expect(() => normalizeEntryNames(input)).toThrow(/would both normalize to "foo"/);
+	});
+
+	test("leaves names that cannot become valid lower snake case for validation", () => {
+		const input = `{ "common": { "404_ERROR": {} } }`;
+		const { content, changed } = normalizeEntryNames(input);
+		expect(changed).toBe(0);
+		expect(() => parseConfig(content)).toThrow(/name must match/);
 	});
 });
 
@@ -215,6 +264,10 @@ describe("renderTs", () => {
 		];
 		const out = renderTs(entries);
 		expect(out).toContain(TS_MARKER);
+		expect(out).toContain("/* eslint-disable */");
+		expect(out).toContain("/* oxlint-disable */");
+		expect(out).not.toContain("prettier-ignore");
+		expect(out).not.toContain("oxfmt-ignore");
 		expect(out).toContain(`A = "AAAAAA",`);
 		expect(out).toContain(`UserNotAuthorized = "BBBBBB",`);
 		expect(out).not.toContain("user_not_authorized");

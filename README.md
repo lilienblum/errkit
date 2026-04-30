@@ -37,11 +37,11 @@ Entries don't need a `code` — `errkit generate` fills in any missing ones and 
 ## How it works
 
 - Language is inferred from the file extension (`.ts`, `.go`, or `.rs`).
-- Error names in `errkit.jsonc` use lowercase snake case, then generate PascalCase API names.
+- Error names in `errkit.jsonc` use lowercase snake case, then generate PascalCase API names. `errkit generate` normalizes entry names it can safely format and writes the corrected names back to `errkit.jsonc`.
 - Each output emits `common` entries plus any scopes it lists, flattened and sorted by name.
 - A scoped entry with the same name as a common entry overrides it, with a warning.
 - Codes are 6 characters from a human-safe alphabet (no `I`, `L`, `O`, `0`, `1`).
-- TypeScript outputs generate PascalCase enum members.
+- TypeScript outputs generate PascalCase enum members and include ESLint/Oxlint disable comments.
 - Go outputs generate PascalCase constants and take their package name from the parent directory (e.g. `internal/errs/errors.go` → `package errs`). Override with `"package": "..."` on the output.
 - Rust outputs generate a dependency-free `Err` enum with PascalCase variants, `ALL`, `as_str`, `from_code`, `AsRef<str>`, `Display`, and `std::error::Error`.
 - Existing output files are only overwritten when they start with the errkit marker comment.

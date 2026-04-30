@@ -4,6 +4,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { readFile, writeFile, rename, unlink } from "node:fs/promises";
 import {
 	parseConfig,
+	normalizeEntryNames,
 	backfillCodes,
 	collectEntries,
 	renderTs,
@@ -171,23 +172,34 @@ async function cmdGenerate(): Promise<void> {
 		fail(`${CONFIG_FILENAME} not found. Run \`errkit init\` first.`);
 	}
 
-	const raw = await readFile(configPath, "utf8");
+	let raw = await readFile(configPath, "utf8");
+	let normalized = 0;
 	let config: Config;
 	try {
+		const result = normalizeEntryNames(raw);
+		raw = result.content;
+		normalized = result.changed;
 		config = parseConfig(raw);
 	} catch (err) {
 		fail(`${formatPath(configPath)}: ${(err as Error).message}`);
 	}
 
 	const { content: updated, added } = backfillCodes(raw, config);
-	if (added > 0) {
+	if (normalized > 0 || added > 0) {
 		try {
 			await writeFileAtomic(configPath, updated);
 		} catch {
 			fail(`Failed to update ${formatPath(configPath)}`);
 		}
 		config = parseConfig(updated);
-		process.stdout.write(`Assigned ${added} code${added === 1 ? "" : "s"} in ${formatPath(configPath)}\n`);
+		if (normalized > 0) {
+			process.stdout.write(
+				`Normalized ${normalized} error name${normalized === 1 ? "" : "s"} in ${formatPath(configPath)}\n`,
+			);
+		}
+		if (added > 0) {
+			process.stdout.write(`Assigned ${added} code${added === 1 ? "" : "s"} in ${formatPath(configPath)}\n`);
+		}
 	}
 
 	const outputs = config.outputs ?? [];

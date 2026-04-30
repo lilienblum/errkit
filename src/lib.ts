@@ -1,4 +1,11 @@
-import { parse as parseJsonc, modify, applyEdits, type ParseError } from "jsonc-parser/lib/esm/main.js";
+import {
+	parse as parseJsonc,
+	visit,
+	modify,
+	applyEdits,
+	type JSONPath,
+	type ParseError,
+} from "jsonc-parser/lib/esm/main.js";
 
 export type Entry = {
 	name: string;
@@ -49,8 +56,79 @@ export function isValidName(name: string): boolean {
 	return NAME_RE.test(name);
 }
 
+export function normalizeName(name: string): string {
+	return name
+		.trim()
+		.replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2")
+		.replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "_")
+		.replace(/^_+|_+$/g, "")
+		.replace(/_+/g, "_");
+}
+
 export function isValidCode(code: string): boolean {
 	return CODE_RE.test(code);
+}
+
+export function normalizeEntryNames(content: string): { content: string; changed: number } {
+	const errors: ParseError[] = [];
+	parseJsonc(content, errors, { allowTrailingComma: true });
+	if (errors.length > 0) return { content, changed: 0 };
+
+	const byContainer = new Map<string, Map<string, string[]>>();
+	const edits: { offset: number; length: number; replacement: string }[] = [];
+
+	visit(
+		content,
+		{
+			onObjectProperty(property, offset, length, _startLine, _startCharacter, pathSupplier) {
+				const path = pathSupplier();
+				if (!isEntryContainerPath(path)) return;
+
+				const normalized = normalizeName(property);
+				if (!isValidName(normalized)) return;
+
+				const containerKey = JSON.stringify(path);
+				let names = byContainer.get(containerKey);
+				if (!names) {
+					names = new Map();
+					byContainer.set(containerKey, names);
+				}
+				const originals = names.get(normalized) ?? [];
+				originals.push(property);
+				names.set(normalized, originals);
+
+				if (normalized !== property) {
+					edits.push({ offset, length, replacement: JSON.stringify(normalized) });
+				}
+			},
+		},
+		{ allowTrailingComma: true },
+	);
+
+	for (const names of byContainer.values()) {
+		for (const [normalized, originals] of names) {
+			if (originals.length > 1) {
+				throw new Error(
+					`entries ${originals.map((name) => JSON.stringify(name)).join(" and ")} would both normalize to "${normalized}"`,
+				);
+			}
+		}
+	}
+
+	let current = content;
+	for (const edit of edits.sort((a, b) => b.offset - a.offset)) {
+		current = current.slice(0, edit.offset) + edit.replacement + current.slice(edit.offset + edit.length);
+	}
+	return { content: current, changed: edits.length };
+}
+
+function isEntryContainerPath(path: JSONPath): boolean {
+	return (
+		(path.length === 1 && path[0] === "common") ||
+		(path.length === 2 && path[0] === "scopes" && typeof path[1] === "string")
+	);
 }
 
 export function generateCode(existing: Set<string>): string {
@@ -264,7 +342,14 @@ export function renderTs(entries: Entry[]): string {
 		tsEntries.map((entry) => ({ source: entry.name, generated: entry.member })),
 		"TypeScript enum member",
 	);
-	const lines: string[] = [TS_MARKER, "// This file is managed by errkit.", "", "export enum Err {"];
+	const lines: string[] = [
+		TS_MARKER,
+		"/* eslint-disable */",
+		"/* oxlint-disable */",
+		"// This file is managed by errkit.",
+		"",
+		"export enum Err {",
+	];
 	tsEntries.forEach((entry, i) => {
 		if (i > 0) lines.push("");
 		if (entry.description) lines.push(`  /** ${entry.description} */`);
