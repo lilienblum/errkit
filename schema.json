@@ -35,7 +35,7 @@
         "path": {
           "type": "string",
           "pattern": "\\.(ts|go|rs)$",
-          "description": "Path to the generated file, relative to errkit.jsonc. Language is inferred from the extension (.ts, .go, or .rs)."
+          "description": "Path to the generated file, relative to errkit.json. Language is inferred from the extension (.ts, .go, or .rs)."
         },
         "scopes": {
           "type": "array",
@@ -61,7 +61,7 @@
         },
         "description": {
           "type": "string",
-          "description": "Human-readable description. Rendered as a doc comment in outputs."
+          "description": "Internal developer description. Rendered only as a doc comment in generated outputs."
         }
       },
       "additionalProperties": false

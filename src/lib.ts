@@ -1,12 +1,3 @@
-import {
-	parse as parseJsonc,
-	visit,
-	modify,
-	applyEdits,
-	type JSONPath,
-	type ParseError,
-} from "jsonc-parser/lib/esm/main.js";
-
 export type Entry = {
 	name: string;
 	code: string;
@@ -72,63 +63,54 @@ export function isValidCode(code: string): boolean {
 }
 
 export function normalizeEntryNames(content: string): { content: string; changed: number } {
-	const errors: ParseError[] = [];
-	parseJsonc(content, errors, { allowTrailingComma: true });
-	if (errors.length > 0) return { content, changed: 0 };
+	const data = parseJsonForRewrite(content);
+	if (!isJsonObject(data)) return { content, changed: 0 };
 
-	const byContainer = new Map<string, Map<string, string[]>>();
-	const edits: { offset: number; length: number; replacement: string }[] = [];
-
-	visit(
-		content,
-		{
-			onObjectProperty(property, offset, length, _startLine, _startCharacter, pathSupplier) {
-				const path = pathSupplier();
-				if (!isEntryContainerPath(path)) return;
-
-				const normalized = normalizeName(property);
-				if (!isValidName(normalized)) return;
-
-				const containerKey = JSON.stringify(path);
-				let names = byContainer.get(containerKey);
-				if (!names) {
-					names = new Map();
-					byContainer.set(containerKey, names);
-				}
-				const originals = names.get(normalized) ?? [];
-				originals.push(property);
-				names.set(normalized, originals);
-
-				if (normalized !== property) {
-					edits.push({ offset, length, replacement: JSON.stringify(normalized) });
-				}
-			},
-		},
-		{ allowTrailingComma: true },
-	);
-
-	for (const names of byContainer.values()) {
-		for (const [normalized, originals] of names) {
-			if (originals.length > 1) {
-				throw new Error(
-					`entries ${originals.map((name) => JSON.stringify(name)).join(" and ")} would both normalize to "${normalized}"`,
-				);
+	let changed = 0;
+	if (isJsonObject(data.common)) {
+		changed += normalizeEntryMapNames(data.common);
+	}
+	if (isJsonObject(data.scopes)) {
+		for (const scope of Object.values(data.scopes)) {
+			if (isJsonObject(scope)) {
+				changed += normalizeEntryMapNames(scope);
 			}
 		}
 	}
-
-	let current = content;
-	for (const edit of edits.sort((a, b) => b.offset - a.offset)) {
-		current = current.slice(0, edit.offset) + edit.replacement + current.slice(edit.offset + edit.length);
-	}
-	return { content: current, changed: edits.length };
+	return { content: changed === 0 ? content : formatJson(data), changed };
 }
 
-function isEntryContainerPath(path: JSONPath): boolean {
-	return (
-		(path.length === 1 && path[0] === "common") ||
-		(path.length === 2 && path[0] === "scopes" && typeof path[1] === "string")
-	);
+function normalizeEntryMapNames(entries: Record<string, unknown>): number {
+	const normalizedNames = new Map<string, string[]>();
+	for (const name of Object.keys(entries)) {
+		const normalized = normalizeName(name);
+		if (!isValidName(normalized)) continue;
+		const originals = normalizedNames.get(normalized) ?? [];
+		originals.push(name);
+		normalizedNames.set(normalized, originals);
+	}
+
+	for (const [normalized, originals] of normalizedNames) {
+		if (originals.length > 1) {
+			throw new Error(
+				`entries ${originals.map((name) => JSON.stringify(name)).join(" and ")} would both normalize to "${normalized}"`,
+			);
+		}
+	}
+
+	let changed = 0;
+	const next: Record<string, unknown> = {};
+	for (const [name, value] of Object.entries(entries)) {
+		const normalized = normalizeName(name);
+		const nextName = isValidName(normalized) ? normalized : name;
+		if (nextName !== name) changed++;
+		next[nextName] = value;
+	}
+	for (const name of Object.keys(entries)) {
+		delete entries[name];
+	}
+	Object.assign(entries, next);
+	return changed;
 }
 
 export function generateCode(existing: Set<string>): string {
@@ -143,15 +125,35 @@ export function generateCode(existing: Set<string>): string {
 }
 
 export function parseConfig(content: string): Config {
-	const errors: ParseError[] = [];
-	const data = parseJsonc(content, errors, { allowTrailingComma: true });
-	if (errors.length > 0) {
-		throw new Error(`errkit.jsonc is not valid JSONC: ${errors[0]!.error}`);
-	}
+	const data = parseJson(content);
 	if (data === undefined || data === null || typeof data !== "object" || Array.isArray(data)) {
-		throw new Error("errkit.jsonc must be a JSON object");
+		throw new Error("errkit.json must be a JSON object");
 	}
 	return validateConfig(data);
+}
+
+function parseJson(content: string): unknown {
+	try {
+		return JSON.parse(content);
+	} catch (err) {
+		throw new Error(`errkit.json is not valid JSON: ${(err as Error).message}`);
+	}
+}
+
+function parseJsonForRewrite(content: string): unknown {
+	try {
+		return JSON.parse(content);
+	} catch {
+		return undefined;
+	}
+}
+
+function isJsonObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function formatJson(data: unknown): string {
+	return `${JSON.stringify(data, null, 2)}\n`;
 }
 
 function validateConfig(data: unknown): Config {
@@ -323,17 +325,28 @@ export function backfillCodes(
 	const missing = findMissingCodes(config);
 	if (missing.length === 0) return { content, added: 0 };
 
+	const data = parseJson(content);
 	const used = collectAllCodes(config);
-	let current = content;
 	for (const m of missing) {
 		const code = generateCode(used);
 		used.add(code);
-		const edits = modify(current, m.path, code, {
-			formattingOptions: { tabSize: 2, insertSpaces: true },
-		});
-		current = applyEdits(current, edits);
+		setJsonPath(data, m.path, code);
 	}
-	return { content: current, added: missing.length };
+	return { content: formatJson(data), added: missing.length };
+}
+
+function setJsonPath(data: unknown, path: (string | number)[], value: unknown): void {
+	let current = data;
+	for (let i = 0; i < path.length - 1; i++) {
+		if (!isJsonObject(current)) {
+			throw new Error(`cannot update JSON path ${path.join(".")}`);
+		}
+		current = current[path[i]!];
+	}
+	if (!isJsonObject(current)) {
+		throw new Error(`cannot update JSON path ${path.join(".")}`);
+	}
+	current[path.at(-1)!] = value;
 }
 
 export function renderTs(entries: Entry[]): string {
@@ -365,12 +378,13 @@ export function renderGo(entries: Entry[], packageName: string): string {
 		goEntries.map((entry) => ({ source: entry.name, generated: entry.goName })),
 		"Go constant",
 	);
+	assertValidGoConstants(goEntries);
 	const lines: string[] = [
 		GO_MARKER,
 		"",
 		`package ${packageName}`,
 		"",
-		"type Err string",
+		"type Code string",
 		"",
 	];
 	if (entries.length === 0) {
@@ -381,7 +395,7 @@ export function renderGo(entries: Entry[], packageName: string): string {
 	goEntries.forEach((entry, i) => {
 		if (i > 0) lines.push("");
 		if (entry.description) lines.push(`\t// ${entry.description}`);
-		lines.push(`\t${entry.goName} Err = ${JSON.stringify(entry.code)}`);
+		lines.push(`\t${entry.goName} Code = ${JSON.stringify(entry.code)}`);
 	});
 	lines.push(")", "");
 	return lines.join("\n");
@@ -419,6 +433,14 @@ function assertValidRustVariants(entries: { name: string; variant: string }[]): 
 	for (const entry of entries) {
 		if (entry.variant === "Self") {
 			throw new Error(`entry "${entry.name}" generates reserved Rust variant name Self`);
+		}
+	}
+}
+
+function assertValidGoConstants(entries: { name: string; goName: string }[]): void {
+	for (const entry of entries) {
+		if (entry.goName === "Code") {
+			throw new Error(`entry "${entry.name}" generates reserved Go constant name Code`);
 		}
 	}
 }

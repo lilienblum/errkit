@@ -64,10 +64,9 @@ describe("isValidCode", () => {
 });
 
 describe("normalizeEntryNames", () => {
-	test("lowercases entry names in common and scopes while preserving comments", () => {
+	test("lowercases entry names in common and scopes", () => {
 		const input = `{
   "common": {
-    // keep me
     "UserNotAuthorized": { "description": "x" }
   },
   "scopes": {
@@ -79,7 +78,6 @@ describe("normalizeEntryNames", () => {
 `;
 		const { content, changed } = normalizeEntryNames(input);
 		expect(changed).toBe(2);
-		expect(content).toContain("// keep me");
 		expect(content).toContain(`"user_not_authorized"`);
 		expect(content).toContain(`"database_unavailable"`);
 		expect(content).not.toContain("UserNotAuthorized");
@@ -144,15 +142,14 @@ describe("parseConfig", () => {
 		expect(cfg.outputs).toHaveLength(2);
 	});
 
-	test("tolerates comments and trailing commas (jsonc)", () => {
+	test("rejects comments and trailing commas", () => {
 		const content = `{
 			// leading comment
 			"common": {
 				"foo": { "description": "hi", },
 			},
 		}`;
-		const cfg = parseConfig(content);
-		expect(cfg.common?.foo?.description).toBe("hi");
+		expect(() => parseConfig(content)).toThrow(/not valid JSON/);
 	});
 
 	test("rejects invalid entry name", () => {
@@ -190,9 +187,8 @@ describe("findMissingCodes", () => {
 });
 
 describe("backfillCodes", () => {
-	test("injects codes only for missing entries, preserves comments", () => {
+	test("injects codes only for missing entries", () => {
 		const input = `{
-  // keep me
   "common": {
     "foo": { "description": "needs a code" },
     "bar": { "code": "ABCDEF" }
@@ -202,7 +198,6 @@ describe("backfillCodes", () => {
 		const cfg = parseConfig(input);
 		const { content, added } = backfillCodes(input, cfg);
 		expect(added).toBe(1);
-		expect(content).toContain("// keep me");
 		expect(content).toContain(`"code": "ABCDEF"`);
 		const after = parseConfig(content);
 		expect(after.common?.foo?.code).toMatch(/^[A-Z2-9]{6}$/);
@@ -294,9 +289,11 @@ describe("renderGo", () => {
 		const out = renderGo(entries, "errs");
 		expect(out).toContain(GO_MARKER);
 		expect(out).toContain("package errs");
-		expect(out).toContain("type Err string");
-		expect(out).toContain(`A Err = "AAAAAA"`);
-		expect(out).toContain(`UserNotAuthorized Err = "BBBBBB"`);
+		expect(out).toContain("type Code string");
+		expect(out).not.toContain("func (e Code) Error()");
+		expect(out).toContain(`A Code = "AAAAAA"`);
+		expect(out).toContain(`UserNotAuthorized Code = "BBBBBB"`);
+		expect(out).not.toContain("ErrUserNotAuthorized");
 		expect(out).not.toContain("user_not_authorized");
 		expect(out).toContain("// bee");
 		expect(hasMarker(out, GO_MARKER)).toBe(true);
@@ -315,6 +312,12 @@ describe("renderGo", () => {
 				{ name: "http_404", code: "BBBBBB" },
 			], "errs"),
 		).toThrow(/both generate Go constant Http404/);
+	});
+
+	test("rejects entries that generate the reserved Go Code identifier", () => {
+		expect(() => renderGo([{ name: "code", code: "AAAAAA" }], "errs")).toThrow(
+			/reserved Go constant name Code/,
+		);
 	});
 });
 

@@ -1,16 +1,16 @@
 # errkit
 
-Declare errors once in `errkit.jsonc`, generate TypeScript, Go, and Rust catalogs.
+Declare errors once in `errkit.json`, generate TypeScript, Go, and Rust catalogs. The CLI has zero runtime dependencies.
 
 ```bash
-npx errkit init       # creates errkit.jsonc in the current directory
-# ... edit errkit.jsonc ...
+npx errkit init       # creates errkit.json in the current directory
+# ... edit errkit.json ...
 npx errkit generate   # backfills codes, writes every output file
 ```
 
-## errkit.jsonc
+## errkit.json
 
-```jsonc
+```json
 {
   "$schema": "https://unpkg.com/errkit@latest/schema.json",
 
@@ -32,25 +32,79 @@ npx errkit generate   # backfills codes, writes every output file
 }
 ```
 
-Entries don't need a `code` — `errkit generate` fills in any missing ones and writes them back to `errkit.jsonc`.
+Entries don't need a `code` — `errkit generate` fills in any missing ones and writes them back to `errkit.json`.
+
+## Use generated codes
+
+### TypeScript
+
+Generated TypeScript files export an `Err` enum for codes. Descriptions are internal developer context only: they are emitted as JSDoc above enum members for editor hover and generated-file readability, but they are not exported as runtime data.
+
+```ts
+import { Err as AuthService } from "./auth-service-errors";
+
+export function userNotFoundResponse() {
+  const code = AuthService.UserNotFound;
+
+  return Response.json({ code }, { status: 404 });
+}
+```
+
+For an entry named `user_not_found`, the generated member is `Err.UserNotFound`. The `AuthService.UserNotFound` form above comes from importing the generated enum with an alias.
+
+The generated file keeps the internal description as JSDoc:
+
+```ts
+export enum Err {
+  /** User was not found */
+  UserNotFound = "K7M2QP",
+}
+```
+
+### Go
+
+Generated Go constants have type `Code`. They are codes, not error wrappers, so they do not implement Go's `error` interface. Descriptions are emitted only as comments above constants for internal developer context.
+
+```go
+package auth
+
+import "example.com/myapp/internal/errs"
+
+type AuthError struct {
+	Code errs.Code
+}
+
+func (e AuthError) Error() string {
+	return string(e.Code)
+}
+
+func FindUser(id string) error {
+	if id == "" {
+		return AuthError{Code: errs.AuthServiceUserNotFound}
+	}
+	return nil
+}
+```
+
+For an entry named `auth_service_user_not_found`, the generated constant is `AuthServiceUserNotFound`.
 
 ## How it works
 
 - Language is inferred from the file extension (`.ts`, `.go`, or `.rs`).
-- Error names in `errkit.jsonc` use lowercase snake case, then generate PascalCase API names. `errkit generate` normalizes entry names it can safely format and writes the corrected names back to `errkit.jsonc`.
+- Error names in `errkit.json` use lowercase snake case, then generate PascalCase API names. `errkit generate` normalizes entry names it can safely format and writes the corrected names back to `errkit.json`.
 - Each output emits `common` entries plus any scopes it lists, flattened and sorted by name.
 - A scoped entry with the same name as a common entry overrides it, with a warning.
 - Codes are 6 characters from a human-safe alphabet (no `I`, `L`, `O`, `0`, `1`).
-- TypeScript outputs generate PascalCase enum members and include ESLint/Oxlint disable comments.
-- Go outputs generate PascalCase constants and take their package name from the parent directory (e.g. `internal/errs/errors.go` → `package errs`). Override with `"package": "..."` on the output.
+- TypeScript outputs generate PascalCase enum members with JSDoc comments and include ESLint/Oxlint disable comments.
+- Go outputs generate a `Code` string type plus PascalCase constants. Package names come from the parent directory (e.g. `internal/errs/errors.go` → `package errs`). Override with `"package": "..."` on the output.
 - Rust outputs generate a dependency-free `Err` enum with PascalCase variants, `ALL`, `as_str`, `from_code`, `AsRef<str>`, `Display`, and `std::error::Error`.
 - Existing output files are only overwritten when they start with the errkit marker comment.
 
 ## Commands
 
 ```
-errkit init              Create errkit.jsonc in the current directory.
-errkit generate          Read errkit.jsonc (walking up from cwd), assign any
+errkit init              Create errkit.json in the current directory.
+errkit generate          Read errkit.json (walking up from cwd), assign any
                          missing codes, then write every file in `outputs`.
                          Aliases: `gen`, `g`.
 ```

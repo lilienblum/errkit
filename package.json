@@ -1,6 +1,15 @@
 {
   "name": "errkit",
-  "version": "0.4.1",
+  "version": "0.5.0",
+  "description": "Declare errors once and generate TypeScript, Go, and Rust error code catalogs.",
+  "keywords": [
+    "errors",
+    "error-codes",
+    "codegen",
+    "typescript",
+    "go",
+    "rust"
+  ],
   "type": "module",
   "license": "MIT",
   "bin": {
@@ -18,8 +27,5 @@
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^5"
-  },
-  "dependencies": {
-    "jsonc-parser": "^3.3.1"
   }
 }

@@ -18,38 +18,16 @@ import {
 	type Output,
 } from "./lib.ts";
 
-const CONFIG_FILENAME = "errkit.jsonc";
+const CONFIG_FILENAME = "errkit.json";
 const MAX_WALK_DEPTH = 40;
 
 const SCHEMA_URL = "https://unpkg.com/errkit@latest/schema.json";
 
-const STARTER = `// errkit configuration.
-// Edit this file by hand, then run \`errkit generate\` to write the output files.
-// Codes are auto-generated and filled in when you run \`errkit generate\`.
-
-{
+const STARTER = `{
   "$schema": "${SCHEMA_URL}",
-
-  // Files to generate. Language is inferred from the file extension (.ts, .go, or .rs).
-  // Each output emits \`common\` entries plus any listed scopes.
-  "outputs": [
-    // { "path": "src/errors.ts" },
-    // { "path": "internal/errs/errors.go", "scopes": ["server"] },
-    // { "path": "src/errors.rs", "scopes": ["server"] }
-  ],
-
-  // Errors included in every output. \`description\` is optional.
-  "common": {
-    // "user_not_authorized": { "description": "User is not authorized" },
-    // "payment_failed": {}
-  },
-
-  // Named groups of errors. Outputs opt in by listing a scope name.
-  "scopes": {
-    // "server": {
-    //   "database_unavailable": { "description": "Database is unavailable" }
-    // }
-  }
+  "outputs": [],
+  "common": {},
+  "scopes": {}
 }
 `;
 
@@ -93,8 +71,8 @@ async function writeFileAtomic(path: string, content: string): Promise<void> {
 function usage(): never {
 	process.stderr.write(
 		`Usage:
-  errkit init              Create errkit.jsonc in the current directory
-  errkit generate          Read errkit.jsonc, backfill codes, write output files
+  errkit init              Create errkit.json in the current directory
+  errkit generate          Read errkit.json, backfill codes, write output files
                            (aliases: gen, g)
 `,
 	);
