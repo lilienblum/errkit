@@ -40,6 +40,30 @@ Entries don't need a `code` — `errkit generate` fills in any missing ones and 
 
 Generated TypeScript files export an `Err` enum for codes. Descriptions are internal developer context only: they are emitted as JSDoc above enum members for editor hover and generated-file readability, but they are not exported as runtime data.
 
+For this `errkit.json` entry:
+
+```json
+{
+  "common": {
+    "user_not_found": {
+      "description": "User was not found",
+      "code": "K7M2QP"
+    }
+  }
+}
+```
+
+errkit generates a TypeScript enum member named `Err.UserNotFound`:
+
+```ts
+export enum Err {
+  /** User was not found */
+  UserNotFound = "K7M2QP",
+}
+```
+
+Import the generated enum and alias it if you want to refer to the service as `AuthService`:
+
 ```ts
 import { Err as AuthService } from "./auth-service-errors";
 
@@ -52,18 +76,52 @@ export function userNotFoundResponse() {
 
 For an entry named `user_not_found`, the generated member is `Err.UserNotFound`. The `AuthService.UserNotFound` form above comes from importing the generated enum with an alias.
 
-The generated file keeps the internal description as JSDoc:
+If application code needs to return a runtime description, keep that mapping in application code and key it by the generated enum value:
 
 ```ts
-export enum Err {
-  /** User was not found */
-  UserNotFound = "K7M2QP",
+import { Err as AuthService } from "./auth-service-errors";
+
+const authServiceDescriptions = {
+  [AuthService.UserNotFound]: "User was not found",
+} satisfies Partial<Record<AuthService, string>>;
+
+export function userNotFoundPayload() {
+  const code = AuthService.UserNotFound;
+  const description = authServiceDescriptions[code];
+
+  return { code, description };
 }
 ```
 
 ### Go
 
 Generated Go constants have type `Code`. They are codes, not error wrappers, so they do not implement Go's `error` interface. Descriptions are emitted only as comments above constants for internal developer context.
+
+For this `errkit.json` entry:
+
+```json
+{
+  "common": {
+    "auth_service_user_not_found": {
+      "description": "User was not found",
+      "code": "K7M2QP"
+    }
+  }
+}
+```
+
+errkit generates a Go constant named `AuthServiceUserNotFound`:
+
+```go
+type Code string
+
+const (
+	// User was not found
+	AuthServiceUserNotFound Code = "K7M2QP"
+)
+```
+
+Because `AuthServiceUserNotFound` is a `Code`, wrap it in an error type before returning it from a function:
 
 ```go
 package auth
@@ -78,7 +136,7 @@ func (e AuthError) Error() string {
 	return string(e.Code)
 }
 
-func FindUser(id string) error {
+func RequireUser(id string) error {
 	if id == "" {
 		return AuthError{Code: errs.AuthServiceUserNotFound}
 	}
